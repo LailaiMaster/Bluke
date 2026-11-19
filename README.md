@@ -15,6 +15,18 @@ Bluke turns your Android phone into a Bluetooth keyboard, touchpad, gamepad, and
 
 ---
 
+## 本分支的摇杆触感
+
+基于官方 v1.1.0，增加两项可独立设置的触感反馈：
+
+- **首次触摸轻震**：手指首次按到左右摇杆时轻震一下，可单独关闭。
+- **摇动梯度震感**：跨越摇杆幅度档位时轻震，推得越远震感越明显；同一档内移动不会反复震动。
+- 摇动强度提供 **关闭 → 很轻 → 轻柔 → 适中 → 较强** 五档，默认轻柔，设置会自动保存。
+
+进入 **Settings → Controller**，或长按手柄顶部的 **Mode**，即可调整。
+
+启动时不再自动弹出普通版本更新提示。
+
 ## Features
 
 - Direct Bluetooth HID connection with no companion apps or server software running on the host
@@ -46,7 +58,7 @@ Bluke turns your Android phone into a Bluetooth keyboard, touchpad, gamepad, and
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/arnav-kr/Bluke.git
+   git clone https://github.com/LailaiMaster/Bluke.git
    cd Bluke
    ```
 

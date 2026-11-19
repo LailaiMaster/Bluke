@@ -197,8 +197,7 @@ fun HomeScreen(
     var layoutSwitcherRevision by remember { mutableIntStateOf(0) }
     var showLayoutSwitcher by remember { mutableStateOf(false) }
 
-    var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
-    var descriptorRefreshRequired by rememberSaveable { mutableStateOf(false) }
+    var showDescriptorRefreshDialog by rememberSaveable { mutableStateOf(false) }
     var showGamepadGuide by rememberSaveable { mutableStateOf(false) }
     var pendingGamepadMode by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -233,78 +232,34 @@ fun HomeScreen(
     }
 
     LaunchedEffect(sharedPrefs) {
-        val currentVersionCode = dev.arnv.bluke.BuildConfig.VERSION_CODE
         val savedVersionCode = sharedPrefs.getInt("last_run_version_code", 0)
         val hasSeenOnboarding = sharedPrefs.getBoolean("has_seen_onboarding", false)
-        descriptorRefreshRequired = requiresHidDescriptorRefresh(
+        showDescriptorRefreshDialog = requiresHidDescriptorRefresh(
             savedRevision = sharedPrefs.getInt(HID_DESCRIPTOR_REVISION_PREFERENCE, 1),
             isExistingInstallation = savedVersionCode > 0 || hasSeenOnboarding,
         )
-        
-        // If they have seen onboarding, they are an existing user.
-        // If savedVersionCode < currentVersionCode, it's an update.
-        if ((savedVersionCode > 0 && savedVersionCode < currentVersionCode) || 
-            (savedVersionCode == 0 && hasSeenOnboarding) || descriptorRefreshRequired) {
-            showUpdateDialog = true
-        }
-        
-        if (savedVersionCode != currentVersionCode) {
-            sharedPrefs.edit { putInt("last_run_version_code", currentVersionCode) }
-        }
-    }
-    
-    if (sharedPrefs.getBoolean("is_developer_mode", false) && sharedPrefs.getBoolean("mock_update_popup", false)) {
-        showUpdateDialog = true
     }
 
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-    if (showUpdateDialog) {
-        val versionName = dev.arnv.bluke.BuildConfig.VERSION_NAME
+    if (showDescriptorRefreshDialog) {
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { 
-                showUpdateDialog = false
-                sharedPrefs.edit { putBoolean("mock_update_popup", false) }
-            },
-            title = {
-                Text(
-                    if (descriptorRefreshRequired) "Bluetooth pairing refresh required"
-                    else "Updated to v$versionName"
-                )
-            },
+            onDismissRequest = { showDescriptorRefreshDialog = false },
+            title = { Text("Bluetooth pairing refresh required") },
             text = {
                 Text(
-                    if (descriptorRefreshRequired) {
-                        "Bluke now uses one shared HID descriptor for Native, Android and Web, " +
-                            "but Bluetooth hosts cache the old layout. To use the new controls, forget the host on this phone, " +
-                            "remove Bluke on the host, then pair again once. Reinstalling the app alone is not enough. " +
-                            "After this one-time refresh, all controller modes switch live without reconnecting or re-pairing."
-                    } else {
-                        "We've added new features and made significant underlying changes to the controller!\n" +
-                            "For detailed information, see the changelog."
-                    }
+                    "Bluke now uses one shared HID descriptor for Native, Android and Web, " +
+                        "but Bluetooth hosts cache the old layout. To use the new controls, forget the host on this phone, " +
+                        "remove Bluke on the host, then pair again once. Reinstalling the app alone is not enough. " +
+                        "After this one-time refresh, all controller modes switch live without reconnecting or re-pairing."
                 )
             },
             confirmButton = {
-                Button(onClick = { 
-                    showUpdateDialog = false 
-                    sharedPrefs.edit {
-                        putBoolean("mock_update_popup", false)
-                        if (descriptorRefreshRequired) {
-                            putInt(HID_DESCRIPTOR_REVISION_PREFERENCE, CURRENT_HID_DESCRIPTOR_REVISION)
-                        }
-                    }
-                    descriptorRefreshRequired = false
+                Button(onClick = {
+                    sharedPrefs.edit { putInt(HID_DESCRIPTOR_REVISION_PREFERENCE, CURRENT_HID_DESCRIPTOR_REVISION) }
+                    showDescriptorRefreshDialog = false
                 }) {
                     Text("Got it")
                 }
             },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { 
-                    uriHandler.openUri("https://github.com/arnav-kr/Bluke/releases")
-                }) {
-                    Text("Changelog")
-                }
-            }
         )
     }
 

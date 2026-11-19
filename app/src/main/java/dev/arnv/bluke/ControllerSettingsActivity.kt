@@ -9,32 +9,48 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Gamepad
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import dev.arnv.bluke.bluetooth.GAMEPAD_DPAD_MODE_PREFERENCE
 import dev.arnv.bluke.bluetooth.GamepadDpadOutputMode
 import dev.arnv.bluke.ui.SettingsCardGroup
 import dev.arnv.bluke.ui.SettingsItemData
+import dev.arnv.bluke.ui.GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE
+import dev.arnv.bluke.ui.GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE
+import dev.arnv.bluke.ui.DEFAULT_STICK_MOVE_HAPTICS_LEVEL
+import dev.arnv.bluke.ui.stickMoveHapticLabels
+import dev.arnv.bluke.ui.SettingsGroup
 import dev.arnv.bluke.ui.theme.MyApplicationTheme
+import kotlin.math.roundToInt
 
 class ControllerSettingsActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -47,6 +63,12 @@ class ControllerSettingsActivity : ComponentActivity() {
                     mutableStateOf(GamepadDpadOutputMode.fromPreference(preferences.getString(GAMEPAD_DPAD_MODE_PREFERENCE, null)))
                 }
                 var showDialog by remember { mutableStateOf(false) }
+                var stickTouchHapticsEnabled by remember {
+                    mutableStateOf(preferences.getBoolean(GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE, true))
+                }
+                var stickMoveHapticsLevel by remember {
+                    mutableIntStateOf(preferences.getInt(GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE, DEFAULT_STICK_MOVE_HAPTICS_LEVEL).coerceIn(0, 4))
+                }
                 val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
                 Scaffold(
                     modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -65,9 +87,53 @@ class ControllerSettingsActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         Spacer(Modifier.height(8.dp))
+                        SettingsGroup(title = "摇杆摇动震感") {
+                            Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+                                Text(stickMoveHapticLabels[stickMoveHapticsLevel], style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "跨越幅度档位时轻震，推得越远震感越明显；滑到最左侧关闭",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Slider(
+                                    value = stickMoveHapticsLevel.toFloat(),
+                                    onValueChange = {
+                                        stickMoveHapticsLevel = it.roundToInt()
+                                        preferences.edit { putInt(GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE, stickMoveHapticsLevel) }
+                                    },
+                                    valueRange = 0f..4f,
+                                    steps = 3,
+                                    modifier = Modifier.testTag("stick_move_haptics_slider").semantics {
+                                        contentDescription = "摇杆摇动震感"
+                                        stateDescription = stickMoveHapticLabels[stickMoveHapticsLevel]
+                                    },
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("关闭", style = MaterialTheme.typography.labelLarge)
+                                    Text("较强", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
                         SettingsCardGroup(
                             title = "Behaviour",
                             items = listOf(
+                                SettingsItemData(
+                                    title = "摇杆触摸轻震",
+                                    subtitle = "手指首次按到左右摇杆时轻震一下",
+                                    icon = { Icon(Icons.Default.Vibration, null, tint = MaterialTheme.colorScheme.primary) },
+                                    action = {
+                                        Switch(
+                                            checked = stickTouchHapticsEnabled,
+                                            onCheckedChange = {
+                                                stickTouchHapticsEnabled = it
+                                                preferences.edit { putBoolean(GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE, it) }
+                                            },
+                                            modifier = Modifier
+                                                .testTag("stick_touch_haptics_switch")
+                                                .semantics { contentDescription = "摇杆触摸轻震" },
+                                        )
+                                    },
+                                ),
                                 SettingsItemData(
                                     title = "Controller compatibility",
                                     subtitle = dpadMode.description,

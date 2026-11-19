@@ -4,10 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.Intent
+import android.media.AudioAttributes
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -36,6 +39,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -92,6 +96,7 @@ private data class ConsoleConfig(
 )
 
 private const val GAMEPAD_REPORT_INTERVAL_MILLIS = 8L
+internal const val GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE = "gamepad_stick_touch_haptics_enabled"
 
 private val CONSOLES = listOf(
     ConsoleConfig(
@@ -146,6 +151,7 @@ fun GamepadView(
     @Suppress("UNUSED_PARAMETER") caseBrush: Brush
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     val layoutRepository = remember(context) { LayoutRepository(context) }
     val pendingLayoutValues = remember { mutableMapOf<String, Float>() }
@@ -158,6 +164,12 @@ fun GamepadView(
     var isVibrationEnabled by remember(sharedPrefs) {
         mutableStateOf(sharedPrefs.getBoolean("gamepad_vibration_enabled", true))
     }
+    var isStickTouchHapticsEnabled by remember(sharedPrefs) {
+        mutableStateOf(sharedPrefs.getBoolean(GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE, true))
+    }
+    var stickMoveHapticsLevel by remember(sharedPrefs) {
+        mutableIntStateOf(sharedPrefs.getInt(GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE, DEFAULT_STICK_MOVE_HAPTICS_LEVEL).coerceIn(0, 4))
+    }
     var dpadOutputMode by remember(sharedPrefs) {
         mutableStateOf(
             GamepadDpadOutputMode.fromPreference(
@@ -168,6 +180,12 @@ fun GamepadView(
 
     DisposableEffect(sharedPrefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { preferences, key ->
+            if (key == GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE) {
+                isStickTouchHapticsEnabled = preferences.getBoolean(GAMEPAD_STICK_TOUCH_HAPTICS_PREFERENCE, true)
+            }
+            if (key == GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE) {
+                stickMoveHapticsLevel = preferences.getInt(GAMEPAD_STICK_MOVE_HAPTICS_PREFERENCE, DEFAULT_STICK_MOVE_HAPTICS_LEVEL).coerceIn(0, 4)
+            }
             if (key == GAMEPAD_DPAD_MODE_PREFERENCE) {
                 dpadOutputMode = GamepadDpadOutputMode.fromPreference(
                     preferences.getString(GAMEPAD_DPAD_MODE_PREFERENCE, null)
@@ -183,6 +201,36 @@ fun GamepadView(
             @Suppress("DEPRECATION")
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             vibrator?.vibrate(VibrationEffect.createOneShot(milliseconds, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+    val triggerStickTouchHaptic: () -> Unit = {
+        if (isStickTouchHapticsEnabled) {
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+    }
+    @Suppress("DEPRECATION")
+    val stickVibrator = remember(context) { context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator }
+    val supportsLowTick = remember(stickVibrator) {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            stickVibrator?.arePrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)?.firstOrNull() == true
+    }
+    val stickHapticAttributes = remember {
+        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+    }
+    @Suppress("DEPRECATION")
+    val triggerStickMoveHaptic: (Int) -> Unit = { step ->
+        val scale = stickHapticScale(stickMoveHapticsLevel, step)
+        if (scale > 0f && view.isHapticFeedbackEnabled) {
+            val effect = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && supportsLowTick ->
+                    VibrationEffect.startComposition()
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, scale).compose()
+                stickVibrator?.hasAmplitudeControl() == true ->
+                    VibrationEffect.createOneShot(12L, (255 * scale).roundToInt().coerceAtLeast(1))
+                else -> VibrationEffect.createOneShot(4L + (8 * scale).roundToInt(), VibrationEffect.DEFAULT_AMPLITUDE)
+            }
+            stickVibrator?.vibrate(effect, stickHapticAttributes)
         }
     }
 
@@ -793,6 +841,8 @@ fun GamepadView(
                         ) {
                             GamepadAnalogStick(
                                 label = "L",
+                                onTouchStart = triggerStickTouchHaptic,
+                                onHapticStep = triggerStickMoveHaptic,
                                 isClicked = { (buttonMask and (1 shl 10)) != 0 },
                                 isHeld = { (buttonMask and (1 shl 10)) != 0 },
                                 onMove = { x, y -> leftStickX = x; leftStickY = y; transmitGamepadState(false) },
@@ -982,6 +1032,8 @@ fun GamepadView(
                         ) {
                             GamepadAnalogStick(
                                 label = "R",
+                                onTouchStart = triggerStickTouchHaptic,
+                                onHapticStep = triggerStickMoveHaptic,
                                 isClicked = { (buttonMask and (1 shl 11)) != 0 },
                                 isHeld = { (buttonMask and (1 shl 11)) != 0 },
                                 onMove = { x, y -> rightStickX = x; rightStickY = y; transmitGamepadState(false) },
@@ -1030,6 +1082,8 @@ fun GamepadView(
                         ) {
                             GamepadAnalogStick(
                                 label = "L",
+                                onTouchStart = triggerStickTouchHaptic,
+                                onHapticStep = triggerStickMoveHaptic,
                                 isClicked = { (buttonMask and (1 shl 10)) != 0 },
                                 isHeld = { (buttonMask and (1 shl 10)) != 0 },
                                 onMove = { x, y -> leftStickX = x; leftStickY = y; transmitGamepadState(false) },
@@ -1200,6 +1254,8 @@ fun GamepadView(
                         ) {
                             GamepadAnalogStick(
                                 label = "R",
+                                onTouchStart = triggerStickTouchHaptic,
+                                onHapticStep = triggerStickMoveHaptic,
                                 isClicked = { (buttonMask and (1 shl 11)) != 0 },
                                 isHeld = { (buttonMask and (1 shl 11)) != 0 },
                                 onMove = { x, y -> rightStickX = x; rightStickY = y; transmitGamepadState(false) },
@@ -2279,13 +2335,15 @@ private fun GamepadStickHoldButton(
 }
 
 @Composable
-private fun GamepadAnalogStick(
+internal fun GamepadAnalogStick(
     label: String,
     isClicked: () -> Boolean,
     modifier: Modifier = Modifier,
     isHeld: () -> Boolean = { false },
     onMove: (Float, Float) -> Unit,
+    onTouchStart: () -> Unit,
     onStickClick: () -> Unit,
+    onHapticStep: (Int) -> Unit = {},
     onToggleHold: ((Boolean) -> Unit)? = null
 ) {
     val clicked = isClicked()
@@ -2296,6 +2354,8 @@ private fun GamepadAnalogStick(
     val currentIsHeld by rememberUpdatedState(held)
     val currentOnStickClick by rememberUpdatedState(onStickClick)
     val currentOnMove by rememberUpdatedState(onMove)
+    val currentOnTouchStart by rememberUpdatedState(onTouchStart)
+    val currentOnHapticStep by rememberUpdatedState(onHapticStep)
 
     val stickScale by animateFloatAsState(
         targetValue = if (clicked || held) 0.90f else 1.0f,
@@ -2310,6 +2370,7 @@ private fun GamepadAnalogStick(
         Box(
             modifier = Modifier
                 .size(90.dp)
+                .testTag("gamepad_stick_$label")
                 .pointerInput(Unit) {
                     val centerPx = size.width / 2f
                     val maxInputRadius = 32.dp.toPx()  // Wide linear touch response radius
@@ -2318,20 +2379,23 @@ private fun GamepadAnalogStick(
 
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        currentOnTouchStart()
                         val pointerId = down.id
                         val downTime = System.currentTimeMillis()
+                        val hapticSteps = StickHapticSteps()
 
-                        val updateStickOffset = { pos: Offset ->
+                        val updateStickOffset = { pos: Offset, isMovement: Boolean ->
                             val dx = pos.x - centerPx
                             val dy = pos.y - centerPx
                             val dist = sqrt(dx * dx + dy * dy)
+                            val normDist = (dist / maxInputRadius).coerceIn(0f, 1f)
+                            val hapticStep = hapticSteps.update(normDist)
 
                             if (dist == 0f) {
                                 stickOffsetX = 0f
                                 stickOffsetY = 0f
                                 currentOnMove(0f, 0f)
                             } else {
-                                val normDist = (dist / maxInputRadius).coerceIn(0f, 1f)
                                 val normalizedX = (dx / dist) * normDist
                                 val normalizedY = (dy / dist) * normDist
 
@@ -2341,9 +2405,10 @@ private fun GamepadAnalogStick(
 
                                 currentOnMove(normalizedX, normalizedY)
                             }
+                            if (isMovement && hapticStep > 0) currentOnHapticStep(hapticStep)
                         }
 
-                        updateStickOffset(down.position)
+                        updateStickOffset(down.position, false)
 
                         while (true) {
                             val event = awaitPointerEvent()
@@ -2365,7 +2430,7 @@ private fun GamepadAnalogStick(
                             }
 
                             change.consume()
-                            updateStickOffset(change.position)
+                            updateStickOffset(change.position, true)
                         }
                     }
                 },

@@ -37,7 +37,6 @@ class DeveloperOptionsActivity : ComponentActivity() {
                 val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
                 
                 var isDevMode by remember { mutableStateOf(sharedPrefs.getBoolean("is_developer_mode", false)) }
-                var mockUpdatePopup by remember { mutableStateOf(sharedPrefs.getBoolean("mock_update_popup", false)) }
                 var mockBtDisabled by remember { mutableStateOf(sharedPrefs.getBoolean("mock_bt_disabled", false)) }
                 var mockUnsupported by remember { mutableStateOf(sharedPrefs.getBoolean("mock_device_unsupported", false)) }
                 var mockGamepadGuide by remember { mutableStateOf(sharedPrefs.getBoolean("mock_gamepad_guide", false)) }
@@ -120,7 +119,6 @@ class DeveloperOptionsActivity : ComponentActivity() {
                                     if (!it) {
                                         // Auto turn off all mocks if dev mode disabled
                                         sharedPrefs.edit {
-                                            putBoolean("mock_update_popup", false)
                                             putBoolean("mock_bt_disabled", false)
                                             putBoolean("mock_device_unsupported", false)
                                             putBoolean("mock_hid_unsupported", false)
@@ -144,19 +142,6 @@ class DeveloperOptionsActivity : ComponentActivity() {
                                     icon = { Icon(Icons.AutoMirrored.Filled.ListAlt, null) },
                                     onClick = { 
                                         startActivity(Intent(this@DeveloperOptionsActivity, DeveloperLogsActivity::class.java))
-                                    }
-                                ),
-                                SettingsItemData(
-                                    title = "Force App Update Popup",
-                                    subtitle = "Mocks an app update on HomeScreen",
-                                    action = {
-                                        Switch(
-                                            checked = mockUpdatePopup,
-                                            onCheckedChange = {
-                                                mockUpdatePopup = it
-                                                sharedPrefs.edit { putBoolean("mock_update_popup", it) }
-                                            }
-                                        )
                                     }
                                 ),
                                 SettingsItemData(
